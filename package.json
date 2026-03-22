@@ -1,0 +1,36 @@
+{
+  "name": "operant-mcp",
+  "version": "1.0.0",
+  "description": "Security testing MCP server with 51 tools for penetration testing, forensics, and vulnerability assessment",
+  "type": "module",
+  "bin": {
+    "operant-mcp": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "security",
+    "pentest",
+    "vulnerability",
+    "forensics",
+    "model-context-protocol"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}
