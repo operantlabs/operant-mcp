@@ -34,42 +34,57 @@ import { register as registerGraphql } from "./tools/graphql.js";
 // Prompts
 import { register as registerPrompts } from "./prompts.js";
 
-const server = new McpServer({
-  name: "operant",
-  version: "1.0.0",
-  description:
-    "Security testing MCP server with 51 tools for penetration testing, " +
-    "network forensics, memory analysis, and vulnerability assessment. " +
-    "Tools require various CLI utilities (curl, tshark, volatility, etc.) " +
-    "to be installed on the system.",
-});
+/** Create and configure an operant MCP server instance */
+function createServer(): McpServer {
+  const server = new McpServer({
+    name: "operant",
+    version: "1.0.0",
+    description:
+      "Security testing MCP server with 51 tools for penetration testing, " +
+      "network forensics, memory analysis, and vulnerability assessment. " +
+      "Tools require various CLI utilities (curl, tshark, volatility, etc.) " +
+      "to be installed on the system.",
+  });
 
-// Register all tool modules
-registerSqli(server);
-registerXss(server);
-registerCmdi(server);
-registerTraversal(server);
-registerSsrf(server);
-registerPcap(server);
-registerRecon(server);
-registerMemory(server);
-registerMalware(server);
-registerCloud(server);
-registerAuth(server);
-registerAccessControl(server);
-registerBizLogic(server);
-registerClickjack(server);
-registerCors(server);
-registerFileUpload(server);
-registerNosqli(server);
-registerDeserialization(server);
-registerGraphql(server);
+  // Register all tool modules
+  registerSqli(server);
+  registerXss(server);
+  registerCmdi(server);
+  registerTraversal(server);
+  registerSsrf(server);
+  registerPcap(server);
+  registerRecon(server);
+  registerMemory(server);
+  registerMalware(server);
+  registerCloud(server);
+  registerAuth(server);
+  registerAccessControl(server);
+  registerBizLogic(server);
+  registerClickjack(server);
+  registerCors(server);
+  registerFileUpload(server);
+  registerNosqli(server);
+  registerDeserialization(server);
+  registerGraphql(server);
 
-// Register methodology prompts
-registerPrompts(server);
+  // Register methodology prompts
+  registerPrompts(server);
+
+  return server;
+}
+
+/**
+ * Export createSandboxServer for Smithery registry scanning.
+ * Returns a fresh server instance (not connected to any transport)
+ * so Smithery can introspect tools/resources without conflicts.
+ */
+export function createSandboxServer() {
+  return createServer();
+}
 
 // Start stdio transport
 async function main() {
+  const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

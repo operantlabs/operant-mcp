@@ -4,7 +4,7 @@
   "description": "Security testing MCP server with 51 tools for penetration testing, forensics, and vulnerability assessment",
   "type": "module",
   "bin": {
-    "operant-mcp": "./dist/index.js"
+    "operant-mcp": "dist/index.js"
   },
   "main": "./dist/index.js",
   "files": [
