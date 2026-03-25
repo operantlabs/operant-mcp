@@ -1,6 +1,7 @@
 {
   "name": "operant-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "mcpName": "io.github.operantlabs/operant-mcp",
   "description": "Security testing MCP server with 51 tools for penetration testing, forensics, and vulnerability assessment",
   "type": "module",
   "bin": {
