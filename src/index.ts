@@ -4,11 +4,17 @@
  * operant-mcp — Security testing MCP server
  *
  * 51 security testing tools across 19 modules + 8 methodology prompts.
- * Runs via stdio transport for use with any MCP client.
+ * Supports both stdio and HTTP Streamable transports.
+ *
+ * Usage:
+ *   npx operant-mcp          # stdio mode (default)
+ *   PORT=3000 npx operant-mcp --http   # HTTP Streamable mode
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { createServer as createHttpServer, IncomingMessage, ServerResponse } from "node:http";
 
 // Tool modules
 import { register as registerSqli } from "./tools/sqli.js";
@@ -82,14 +88,60 @@ export function createSandboxServer() {
   return createServer();
 }
 
-// Start stdio transport
-async function main() {
+// Start stdio transport (default)
+async function startStdio() {
   const server = createServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }
 
-main().catch((err) => {
+// Start HTTP Streamable transport
+async function startHttp() {
+  const port = parseInt(process.env.PORT || "3000", 10);
+
+  const httpServer = createHttpServer(async (req: IncomingMessage, res: ServerResponse) => {
+    // CORS headers for all requests
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization, Mcp-Session-Id");
+    res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    const url = new URL(req.url || "/", `http://localhost:${port}`);
+
+    if (url.pathname === "/mcp") {
+      // Create a new transport per session for stateless mode
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined, // stateless
+      });
+      const server = createServer();
+      await server.connect(transport);
+      await transport.handleRequest(req, res);
+    } else if (url.pathname === "/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ status: "ok", server: "operant-mcp", version: "1.0.1" }));
+    } else {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Not found. Use /mcp for MCP endpoint or /health for health check." }));
+    }
+  });
+
+  httpServer.listen(port, () => {
+    console.error(`operant-mcp HTTP server listening on port ${port}`);
+    console.error(`MCP endpoint: http://localhost:${port}/mcp`);
+  });
+}
+
+// Determine transport mode from CLI args
+const useHttp = process.argv.includes("--http") || !!process.env.MCP_HTTP;
+const startFn = useHttp ? startHttp : startStdio;
+
+startFn().catch((err) => {
   console.error("Fatal error:", err);
   process.exit(1);
 });
