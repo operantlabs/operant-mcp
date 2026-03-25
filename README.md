@@ -1,5 +1,11 @@
 # operant-mcp
 
+[![NPM Version](https://img.shields.io/npm/v/operant-mcp?color=red)](https://www.npmjs.com/package/operant-mcp) [![npm downloads](https://img.shields.io/npm/dw/operant-mcp)](https://www.npmjs.com/package/operant-mcp) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/) [![Model Context Protocol](https://img.shields.io/badge/MCP-Server-orange.svg)](https://modelcontextprotocol.io) [![smithery badge](https://smithery.ai/badge/operant-mcp)](https://smithery.ai/server/operant-mcp)
+
+<a href="https://glama.ai/mcp/servers/operant-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/operant-mcp/badge" alt="operant-mcp MCP server" />
+</a>
+
 Security testing MCP server with 51 tools for penetration testing, network forensics, memory analysis, and vulnerability assessment.
 
 ## Quick Start
