@@ -1,11 +1,11 @@
 # operant-mcp
 
-[![NPM Version](https://img.shields.io/npm/v/operant-mcp?color=red)](https://www.npmjs.com/package/operant-mcp) [![npm downloads](https://img.shields.io/npm/dw/operant-mcp)](https://www.npmjs.com/package/operant-mcp) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/) ![MCP Server](https://badge.mcpx.dev?type=server&features=tools,prompts 'MCP Server with Tools and Prompts') [![smithery badge](https://smithery.ai/badge/operant-mcp)](https://smithery.ai/server/operant-mcp)
+[![NPM Version](https://img.shields.io/npm/v/operant-mcp?color=red)](https://www.npmjs.com/package/operant-mcp) [![npm downloads](https://img.shields.io/npm/dw/operant-mcp)](https://www.npmjs.com/package/operant-mcp) [![GitHub stars](https://img.shields.io/github/stars/operantlabs/operant-mcp?style=social)](https://github.com/operantlabs/operant-mcp) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue.svg)](https://www.typescriptlang.org/) ![MCP Server](https://badge.mcpx.dev?type=server&features=tools,prompts 'MCP Server with Tools and Prompts') [![smithery badge](https://smithery.ai/badge/operant-mcp)](https://smithery.ai/server/operant-mcp)
 
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=operant-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9wZXJhbnQtbWNwIl19) [![Install in Cursor](https://img.shields.io/badge/Cursor-Install_Server-000000?style=flat-square&logo=cursor&logoColor=white)](https://cursor.com/en/install-mcp?name=operant-mcp&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsIm9wZXJhbnQtbWNwIl19)
 
-<a href="https://glama.ai/mcp/servers/operant-mcp">
-  <img width="380" height="200" src="https://glama.ai/mcp/servers/operant-mcp/badge" alt="operant-mcp MCP server" />
+<a href="https://glama.ai/mcp/servers/operantlabs/operant-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/operantlabs/operant-mcp/badge" alt="operant-mcp MCP server" />
 </a>
 
 Security testing MCP server with 51 tools for penetration testing, network forensics, memory analysis, and vulnerability assessment.
