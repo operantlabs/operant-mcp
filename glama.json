@@ -1,7 +1,6 @@
 {
-  "name": "operant-mcp",
-  "description": "Security testing MCP server with 51 tools for penetration testing, network forensics, memory analysis, and vulnerability assessment",
-  "repository": "https://github.com/operantlabs/operant-mcp",
-  "npm": "operant-mcp",
-  "categories": ["security", "penetration-testing", "forensics"]
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": [
+    "esxr"
+  ]
 }
