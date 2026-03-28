@@ -40,6 +40,9 @@ import { register as registerGraphql } from "./tools/graphql.js";
 // Prompts
 import { register as registerPrompts } from "./prompts.js";
 
+// Resources
+import { register as registerResources } from "./resources.js";
+
 /** Create and configure an operant MCP server instance */
 function createServer(): McpServer {
   const server = new McpServer({
@@ -75,6 +78,9 @@ function createServer(): McpServer {
 
   // Register methodology prompts
   registerPrompts(server);
+
+  // Register reference resources
+  registerResources(server);
 
   return server;
 }

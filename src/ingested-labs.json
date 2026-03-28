@@ -1,0 +1,17 @@
+[
+  { "id": "path_traversal_null_byte_bypass", "file": "Certificates/PortSwigger/labs/path-traversal/null-byte-bypass.md", "categories": ["path_traversal"], "date": "2026-03-28" },
+  { "id": "cors_trusted_insecure_protocols", "file": "Certificates/PortSwigger/labs/cors/trusted-insecure-protocols.md", "categories": ["cors"], "date": "2026-03-28" },
+  { "id": "dom_xss_web_messages_json_parse", "file": "Certificates/PortSwigger/labs/dom-based/web-messages-json-parse.md", "categories": ["postmessage_xss"], "date": "2026-03-28" },
+  { "id": "nosqli_extract_unknown_fields", "file": "Certificates/PortSwigger/labs/nosql-injection/extract-unknown-fields.md", "categories": ["nosqli"], "date": "2026-03-28" },
+  { "id": "websocket_cross_site_hijacking", "file": "Certificates/PortSwigger/labs/websockets/cross-site-websocket-hijacking.md", "categories": ["websocket"], "date": "2026-03-28" },
+  { "id": "websocket_manipulating_handshake", "file": "Certificates/PortSwigger/labs/websockets/manipulating-handshake.md", "categories": ["websocket"], "date": "2026-03-28" },
+  { "id": "business_logic_infinite_money", "file": "Certificates/PortSwigger/labs/business-logic/infinite-money.md", "categories": ["business_logic"], "date": "2026-03-28" },
+  { "id": "business_logic_encryption_oracle", "file": "Certificates/PortSwigger/labs/business-logic/encryption-oracle.md", "categories": ["business_logic"], "date": "2026-03-28" },
+  { "id": "xss_steal_cookies", "file": "Certificates/PortSwigger/labs/xss/steal-cookies.md", "categories": ["xss"], "date": "2026-03-28" },
+  { "id": "xss_capture_passwords", "file": "Certificates/PortSwigger/labs/xss/capture-passwords.md", "categories": ["xss"], "date": "2026-03-28" },
+  { "id": "file_upload_path_traversal", "file": "Certificates/PortSwigger/labs/file-upload/path-traversal.md", "categories": ["file_upload"], "date": "2026-03-28" },
+  { "id": "file_upload_obfuscated_extension", "file": "Certificates/PortSwigger/labs/file-upload/obfuscated-extension.md", "categories": ["file_upload"], "date": "2026-03-28" },
+  { "id": "file_upload_polyglot_web_shell", "file": "Certificates/PortSwigger/labs/file-upload/polyglot-web-shell.md", "categories": ["file_upload"], "date": "2026-03-28" },
+  { "id": "ssrf_open_redirect_bypass", "file": "Certificates/PortSwigger/labs/ssrf/open-redirect-bypass.md", "categories": ["ssrf"], "date": "2026-03-28" },
+  { "id": "xxe_blind_error_messages", "file": "Certificates/PortSwigger/labs/xxe/error-messages.md", "categories": ["ssrf"], "date": "2026-03-28" }
+]
