@@ -44,5 +44,9 @@
   { "id": "smuggling_te_obfuscation", "file": "Certificates/PortSwigger/labs/http-smuggling/te-obfuscation.md", "categories": ["ssrf"], "date": "2026-03-29" },
   { "id": "smuggling_cl_te_differential", "file": "Certificates/PortSwigger/labs/http-smuggling/cl-te-differential.md", "categories": ["ssrf"], "date": "2026-03-29" },
   { "id": "smuggling_te_cl_differential", "file": "Certificates/PortSwigger/labs/http-smuggling/te-cl-differential.md", "categories": ["ssrf"], "date": "2026-03-29" },
-  { "id": "smuggling_cl_0", "file": "Certificates/PortSwigger/labs/http-smuggling/cl-0.md", "categories": ["ssrf"], "date": "2026-03-29" }
+  { "id": "smuggling_cl_0", "file": "Certificates/PortSwigger/labs/http-smuggling/cl-0.md", "categories": ["ssrf"], "date": "2026-03-29" },
+  { "id": "xss_event_handlers_blocked", "file": "Certificates/PortSwigger/labs/xss/event-handlers-blocked.md", "categories": ["xss"], "date": "2026-03-30" },
+  { "id": "xss_csp_bypass", "file": "Certificates/PortSwigger/labs/xss/csp-bypass.md", "categories": ["xss"], "date": "2026-03-30" },
+  { "id": "dom_clobbering_xss", "file": "Certificates/PortSwigger/labs/xss/dom-clobbering.md", "categories": ["xss"], "date": "2026-03-30" },
+  { "id": "ssrf_whitelist_bypass", "file": "Certificates/PortSwigger/labs/ssrf/whitelist-bypass.md", "categories": ["ssrf"], "date": "2026-03-30" }
 ]

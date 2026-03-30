@@ -36,6 +36,10 @@ import { register as registerFileUpload } from "./tools/fileupload.js";
 import { register as registerNosqli } from "./tools/nosqli.js";
 import { register as registerDeserialization } from "./tools/deserialization.js";
 import { register as registerGraphql } from "./tools/graphql.js";
+import { register as registerInteractsh } from "./tools/interactsh.js";
+import { register as registerRawHttp } from "./tools/rawhttp.js";
+import { register as registerRace } from "./tools/race.js";
+import { register as registerScanning } from "./tools/scanning.js";
 
 // Prompts
 import { register as registerPrompts } from "./prompts.js";
@@ -75,6 +79,10 @@ function createServer(): McpServer {
   registerNosqli(server);
   registerDeserialization(server);
   registerGraphql(server);
+  registerInteractsh(server);
+  registerRawHttp(server);
+  registerRace(server);
+  registerScanning(server);
 
   // Register methodology prompts
   registerPrompts(server);

